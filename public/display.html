@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>签名展示墙</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+
+        /* ★★★ 最终版 Flexbox 布局 ★★★ */
+        #signature-wall {
+            width: 100%;
+            height: 100%;
+            background: url('background.jpg') no-repeat center center;
+            background-size: cover;
+            
+            /* 1. 声明为 Flexbox 容器 */
+            display: flex;
+            flex-wrap: wrap;
+            
+            /* 2. 水平居中 & 垂直居中 */
+            justify-content: center;
+            align-content: center;
+            
+            /* 3. 设置间距和边距 */
+            gap: 2vw; /* 签名之间的间距 */
+            padding: 5vh 5vw;
+            box-sizing: border-box;
+        }
+        
+        .signature-plaque {
+            /* 4. ★ 核心：使用 calc() 精确计算宽度，确保一行4个 ★ */
+            /* 解释：每个元素的基础宽度是25%，再减去它需要承担的间距(总共3个间距/4个元素) */
+            flex-basis: calc(25% - (3 * 2vw / 4));
+            
+            /* 5. ★ 关键：用 aspect-ratio 强制规定形状为16:9的长方形 ★ */
+            aspect-ratio: 16 / 9;
+
+            background-color: rgba(255, 255, 255, 0.92);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+            box-sizing: border-box;
+            
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            
+            opacity: 0;
+            transition: opacity 0.8s ease-in-out;
+        }
+        
+        .signature-plaque.visible {
+            opacity: 1;
+        }
+
+        .signature-plaque img {
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain; 
+        }
+
+        /* 英雄动画的样式 */
+        #hero-view {
+            position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 9999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease-in-out;
+        }
+        #hero-view.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        #hero-view img {
+            max-width: 80%;
+            max-height: 80%;
+            padding: 30px;
+            background-color: white;
+            border-radius: 20px;
+            box-shadow: 0 0 50px rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <audio src="background-music.mp3" autoplay loop></audio>
+    <div id="signature-wall"></div>
+    <div id="hero-view"></div>
+
+    <script>
+        // JavaScript 代码无需任何改动
+        const wall = document.getElementById('signature-wall');
+        const heroView = document.getElementById('hero-view');
+        const ws = new WebSocket(`ws://${window.location.host}`);
+
+        let allSignatures = [];
+        let currentPage = 0;
+        const signaturesPerPage = 8;
+        const cycleTime = 60000;
+        let cycleIntervalId = null;
+
+        function showHeroAnimation(newSignature) {
+            return new Promise(resolve => {
+                heroView.innerHTML = `<img src="${newSignature.dataURL}" />`;
+                heroView.classList.add('visible');
+
+                setTimeout(() => {
+                    heroView.classList.remove('visible');
+                    setTimeout(() => {
+                        heroView.innerHTML = '';
+                        resolve();
+                    }, 500);
+                }, 2000);
+            });
+        }
+
+        function renderCurrentPage() {
+            const totalPages = Math.ceil(allSignatures.length / signaturesPerPage) || 1;
+            currentPage = currentPage % totalPages;
+            const startIndex = currentPage * signaturesPerPage;
+            const endIndex = startIndex + signaturesPerPage;
+            const pageSignatures = allSignatures.slice(startIndex, endIndex);
+            wall.innerHTML = '';
+            pageSignatures.forEach((sig) => {
+                const plaque = document.createElement('div');
+                plaque.className = 'signature-plaque';
+                const img = document.createElement('img');
+                img.src = sig.dataURL;
+                plaque.appendChild(img);
+                wall.appendChild(plaque);
+                setTimeout(() => { plaque.classList.add('visible'); }, 50);
+            });
+        }
+        function startOrResetCycle() {
+            if (cycleIntervalId) clearInterval(cycleIntervalId);
+            if (allSignatures.length > signaturesPerPage) {
+                cycleIntervalId = setInterval(() => { currentPage++; renderCurrentPage(); }, cycleTime);
+            }
+        }
+        ws.onmessage = async (event) => {
+            const message = JSON.parse(event.data);
+            if (message.type !== 'update') return;
+
+            const { allSignatures: newSignatures, newSignatureId } = message.payload;
+            
+            let didChange = JSON.stringify(allSignatures) !== JSON.stringify(newSignatures);
+            if (!didChange) return;
+
+            if (newSignatureId) {
+                const newSigObject = newSignatures.find(s => s.id === newSignatureId);
+                if (newSigObject) {
+                    await showHeroAnimation(newSigObject);
+                }
+            }
+
+            const newSigIndex = newSignatures.findIndex(s => s.id === newSignatureId);
+            if (newSigIndex > -1) {
+                const [newSig] = newSignatures.splice(newSigIndex, 1);
+                newSignatures.unshift(newSig);
+            }
+
+            allSignatures = newSignatures;
+            currentPage = 0;
+            renderCurrentPage();
+            startOrResetCycle();
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>签名系统</title>
+    <style>
+        body, html { height: 100%; margin: 0; overflow: hidden; font-family: sans-serif; }
+        .container {
+            width: 100%; height: 100%;
+            background: url('background.jpg') no-repeat center center;
+            background-size: cover;
+        }
+        .view {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            padding: 20px; box-sizing: border-box;
+        }
+        .hidden { display: none !important; }
+        #signature-container {
+            width: 90vw; height: 90vh; max-width: 1200px; max-height: 800px;
+            display: flex; flex-direction: column;
+        }
+        #signature-pad {
+            width: 100%; flex-grow: 1;
+            border: 2px dashed rgba(255, 255, 255, 0.7);
+            border-radius: 12px; cursor: crosshair; margin-bottom: 20px;
+        }
+        .actions-panel {
+            background-color: transparent;
+            padding: 10px 30px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .thickness-control {
+            display: flex; align-items: center; color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+        .thickness-control label { margin-right: 10px; font-size: 16px; }
+        .thickness-control input[type="range"] {
+            width: 150px; cursor: pointer;
+        }
+        button { font-size: 16px; padding: 12px 30px; cursor: pointer; border-radius: 8px; border: none; font-weight: 500; transition: all 0.2s; }
+        #save-btn { background-color: #007bff; color: white; }
+        #clear-btn { background-color: #6c757d; color: white; }
+        #manage-btn { background-color: #28a745; color: white; }
+        #gallery-card { width: 80%; max-width: 900px; height: 80%; display: flex; flex-direction: column; background-color: rgba(255, 255, 255, 0.9); padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); }
+        #gallery-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; }
+        #gallery-title { font-size: 24px; font-weight: 500; color: #333; }
+        #back-btn { background-color: #17a2b8; color: white; }
+        #gallery-content { flex-grow: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+        #gallery-content::-webkit-scrollbar { display: none; }
+        .thumbnail { position: relative; }
+        .thumbnail img { width: 100%; border: 1px solid #ddd; border-radius: 6px; }
+        .delete-btn { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="signature-view" class="view">
+            <div id="signature-container">
+                <canvas id="signature-pad"></canvas>
+                <div class="actions-panel">
+                    <button id="manage-btn">浏览历史签名</button>
+                    <div class="thickness-control">
+                        <label for="thickness-slider">笔画粗细:</label>
+                        <input type="range" id="thickness-slider" min="1" max="10" value="4">
+                    </div>
+                    <div>
+                        <button id="clear-btn" style="margin-right: 15px;">清除重签</button>
+                        <button id="save-btn">完成签名</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="gallery-view" class="view hidden">
+            <div id="gallery-card">
+                <div id="gallery-header">
+                    <h2 id="gallery-title">历史签名</h2>
+                    <button id="back-btn">返回签名</button>
+                </div>
+                <div id="gallery-content"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+    <script>
+        // 获取所有需要的HTML元素
+        const signatureView = document.getElementById('signature-view');
+        const galleryView = document.getElementById('gallery-view');
+        const canvas = document.getElementById('signature-pad');
+        const galleryContent = document.getElementById('gallery-content');
+        const thicknessSlider = document.getElementById('thickness-slider');
+
+        // 初始化签名板
+        const signaturePad = new SignaturePad(canvas, {
+            penColor: 'black'
+        });
+
+        // 建立网络连接
+        const ws = new WebSocket(`ws://${window.location.host}`);
+
+        // ★★★ 核心修正：监听服务器消息的逻辑 ★★★
+        ws.onmessage = (event) => { 
+            try {
+                const message = JSON.parse(event.data);
+                // 确保我们收到的消息是我们需要的'update'类型
+                if (message.type === 'update' && message.payload && message.payload.allSignatures) {
+                    // 从"信封"里取出真正的签名列表
+                    const signatures = message.payload.allSignatures;
+                    renderGallery(signatures);
+                }
+            } catch (e) {
+                console.error("解析服务器消息失败:", e);
+            }
+        };
+
+        // 其他所有函数和事件绑定都保持不变，为保证完整性，全部粘贴于此
+        function updateThickness() { const thickness = parseFloat(thicknessSlider.value); signaturePad.maxWidth = thickness; signaturePad.minWidth = thickness * 0.8; }
+        function forceClearCanvas() { const ctx = canvas.getContext("2d"); ctx.clearRect(0, 0, canvas.width, canvas.height); signaturePad._reset(); }
+        function showSignatureView() { signatureView.classList.remove('hidden'); galleryView.classList.add('hidden'); }
+        function showGalleryView() { signatureView.classList.add('hidden'); galleryView.classList.remove('hidden'); }
+        function renderGallery(signatures) {
+            galleryContent.innerHTML = '';
+            signatures.forEach(sig => {
+                const thumbDiv = document.createElement('div');
+                thumbDiv.className = 'thumbnail';
+                const img = document.createElement('img');
+                img.src = sig.dataURL;
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = '✕';
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.onclick = () => { if (confirm(`确定要删除这个签名吗？`)) { ws.send(JSON.stringify({ type: 'delete', payload: sig.id })); } };
+                thumbDiv.appendChild(img);
+                thumbDiv.appendChild(deleteBtn);
+                galleryContent.appendChild(thumbDiv);
+            });
+        }
+        function resizeCanvas() { const ratio = Math.max(window.devicePixelRatio || 1, 1); canvas.width = canvas.offsetWidth * ratio; canvas.height = canvas.offsetHeight * ratio; canvas.getContext("2d").scale(ratio, ratio); forceClearCanvas(); }
+        
+        thicknessSlider.addEventListener('input', updateThickness);
+        document.getElementById('manage-btn').addEventListener('click', showGalleryView);
+        document.getElementById('back-btn').addEventListener('click', showSignatureView);
+        document.getElementById('clear-btn').addEventListener('click', forceClearCanvas);
+        document.getElementById('save-btn').addEventListener('click', () => { if (signaturePad.isEmpty()) { alert("请先签名！"); return; } const dataURL = signaturePad.toDataURL('image/png'); ws.send(JSON.stringify({ type: 'add', payload: dataURL })); forceClearCanvas(); });
+        window.addEventListener("resize", resizeCanvas);
+        
+        resizeCanvas();
+        updateThickness();
+    </script>
+</body>
+</html>
