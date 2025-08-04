@@ -100,7 +100,12 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
 function createWindow() {
     const displays = screen.getAllDisplays();
     const externalDisplay = displays.find(d => d.bounds.x !== 0 || d.bounds.y !== 0);
-    const signatureWindow = new BrowserWindow({ width: 1200, height: 800, webPreferences: { preload: path.join(__dirname, 'preload.js') } });
+    const signatureWindow = new BrowserWindow({
+        // width: 1200,  // <-- 移除这两行
+        // height: 800,
+        fullscreen: true, // ★★★ 新增：让签名窗口也全屏 ★★★
+        webPreferences: { preload: path.join(__dirname, 'preload.js') }
+    });
     const displayWindow = new BrowserWindow({ fullscreen: true, x: externalDisplay ? externalDisplay.bounds.x : undefined, y: externalDisplay ? externalDisplay.bounds.y : undefined, webPreferences: { preload: path.join(__dirname, 'preload.js') } });
     signatureWindow.loadURL(`http://localhost:${PORT}/index.html`);
     displayWindow.loadURL(`http://localhost:${PORT}/display.html`);
