@@ -10,12 +10,12 @@
   "author": "Fredrick Tang",
   "license": "MIT",
   "dependencies": {
-    "express": "^5.1.0",
-    "ws": "^8.18.3"
+    "express": "^4.19.2",
+    "ws": "^7.5.10"
   },
   "devDependencies": {
-    "electron": "^37.2.5",
-    "electron-builder": "^26.0.12"
+    "electron": "^13.6.9",
+    "electron-builder": "^22.14.13"
   },
   "build": {
     "appId": "com.yourcompany.signature",
