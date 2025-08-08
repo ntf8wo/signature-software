@@ -1,11 +1,23 @@
 // main
 
-const { app, BrowserWindow, screen, ipcMain } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, Menu } = require('electron');
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs');
+
+// Windows 7 兼容性处理
+// 禁用硬件加速以提高在旧系统上的兼容性
+if (process.platform === 'win32') {
+  const os = require('os');
+  const release = os.release().split('.').map(Number);
+  // 检查是否为 Windows 7 (6.1) 或更早版本
+  if (release[0] < 6 || (release[0] === 6 && release[1] < 2)) {
+    app.disableHardwareAcceleration();
+    console.log('Windows 7 or earlier detected, hardware acceleration disabled.');
+  }
+}
 
 const expressApp = express();
 const server = http.createServer(expressApp);
@@ -100,16 +112,28 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
 function createWindow() {
     const displays = screen.getAllDisplays();
     const externalDisplay = displays.find(d => d.bounds.x !== 0 || d.bounds.y !== 0);
+    
+    // 创建签名窗口并隐藏菜单栏
     const signatureWindow = new BrowserWindow({
-        // width: 1200,  // <-- 移除这两行
-        // height: 800,
-        fullscreen: true, // ★★★ 新增：让签名窗口也全屏 ★★★
-        webPreferences: { preload: path.join(__dirname, 'preload.js') }
+        fullscreen: true,
+        webPreferences: { preload: path.join(__dirname, 'preload.js') },
+        menu: null // 添加此行以隐藏菜单栏
     });
-    const displayWindow = new BrowserWindow({ fullscreen: true, x: externalDisplay ? externalDisplay.bounds.x : undefined, y: externalDisplay ? externalDisplay.bounds.y : undefined, webPreferences: { preload: path.join(__dirname, 'preload.js') } });
+    const displayWindow = new BrowserWindow({ 
+        fullscreen: true, 
+        x: externalDisplay ? externalDisplay.bounds.x : undefined, 
+        y: externalDisplay ? externalDisplay.bounds.y : undefined, 
+        webPreferences: { preload: path.join(__dirname, 'preload.js') }, 
+        menu: null // 添加此行以隐藏菜单栏
+    });
+
+    // 移除应用菜单
+    Menu.setApplicationMenu(null);
+
     signatureWindow.loadURL(`http://localhost:${PORT}/index.html`);
     displayWindow.loadURL(`http://localhost:${PORT}/display.html`);
 }
+
 ipcMain.on('open-gallery-window', () => {
     if (galleryWindow) { galleryWindow.focus(); return; }
     galleryWindow = new BrowserWindow({ width: 400, height: 600, title: '历史签名画廊', webPreferences: { preload: path.join(__dirname, 'preload.js') } });
